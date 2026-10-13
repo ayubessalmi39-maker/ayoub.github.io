@@ -1,0 +1,2255 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Shadow Raid 3D - Realistic Wilderness FPS</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Teko:wght@600;700&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+    }
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #111417;
+      font-family: 'Rajdhani', sans-serif;
+    }
+    .font-teko {
+      font-family: 'Teko', sans-serif;
+      letter-spacing: 0.05em;
+    }
+    #gameCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .hud-glow {
+      text-shadow: 0 0 12px rgba(245, 158, 11, 0.6);
+    }
+    .ui-panel {
+      background: linear-gradient(135deg, rgba(20, 24, 30, 0.94), rgba(10, 13, 17, 0.97));
+      border: 1px solid rgba(217, 119, 6, 0.35);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+    }
+    .btn-tactical {
+      background: linear-gradient(180deg, #d97706, #b45309);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 4px 10px rgba(0, 0, 0, 0.4);
+      transition: all 0.15s ease-out;
+    }
+    .btn-tactical:hover {
+      filter: brightness(1.15);
+      transform: translateY(-1px);
+    }
+    .btn-tactical:active {
+      transform: translateY(1px);
+    }
+    #damageVignette {
+      pointer-events: none;
+      background: radial-gradient(circle at center, transparent 45%, rgba(185, 28, 28, 0.55) 100%);
+      opacity: 0;
+      transition: opacity 0.12s ease-out;
+    }
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: #12161b; }
+    ::-webkit-scrollbar-thumb { background: #d97706; border-radius: 4px; }
+
+    /* Landscape prompt warning for mobile portrait */
+    @media screen and (orientation: portrait) and (max-width: 800px) {
+      #landscapePrompt {
+        display: flex !important;
+      }
+    }
+  </style>
+</head>
+<body class="relative w-screen h-screen">
+
+  <!-- 3D Three.js Canvas -->
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- Blood Vignette Flash -->
+  <div id="damageVignette" class="absolute inset-0 z-10 pointer-events-none"></div>
+
+  <!-- Tactical Reticle & Hitmarker -->
+  <div id="crosshairContainer" class="absolute inset-0 pointer-events-none z-20 flex items-center justify-center">
+    <div class="relative w-8 h-8 flex items-center justify-center">
+      <!-- Cross dots & lines -->
+      <div class="w-1.5 h-1.5 rounded-full bg-amber-400 opacity-90 shadow-[0_0_8px_#f59e0b]"></div>
+      <div class="absolute w-3 h-[1.5px] bg-amber-200/80 left-0 -translate-x-1"></div>
+      <div class="absolute w-3 h-[1.5px] bg-amber-200/80 right-0 translate-x-1"></div>
+      <div class="absolute h-3 w-[1.5px] bg-amber-200/80 top-0 -translate-y-1"></div>
+      <div class="absolute h-3 w-[1.5px] bg-amber-200/80 bottom-0 translate-y-1"></div>
+
+      <!-- Hitmarker X Indicator -->
+      <div id="hitmarker" class="absolute inset-0 opacity-0 pointer-events-none transition-opacity duration-100 flex items-center justify-center">
+        <div class="absolute w-4 h-[2px] bg-red-400 rotate-45 shadow-[0_0_5px_#ef4444]"></div>
+        <div class="absolute w-4 h-[2px] bg-red-400 -rotate-45 shadow-[0_0_5px_#ef4444]"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Primary HUD Display -->
+  <div id="hud" class="absolute inset-0 pointer-events-none z-20 flex flex-col justify-between p-3 sm:p-5">
+    <!-- Top HUD Elements -->
+    <div class="flex justify-between items-start w-full">
+      <div class="flex flex-col gap-1.5">
+        <div class="flex items-center gap-2">
+          <div class="px-3.5 py-1 rounded bg-amber-950/80 border border-amber-500/60 font-teko text-xl sm:text-2xl text-amber-300 tracking-wider flex items-center gap-2 shadow-lg">
+            <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping"></span>
+            RAID <span id="hudRaidNum" class="text-white font-bold ml-1">1</span>
+          </div>
+          <span id="hudTimer" class="px-3 py-1 rounded bg-black/60 border border-amber-600/40 text-xs sm:text-sm font-bold text-amber-200 tracking-wider">00:00</span>
+          <!-- Settings Trigger -->
+          <button id="btnOpenSettings" class="pointer-events-auto w-8 h-8 rounded bg-gray-900/80 border border-amber-600/50 text-amber-400 hover:text-white flex items-center justify-center">
+            <i class="fa-solid fa-gear text-sm"></i>
+          </button>
+        </div>
+        <div class="text-xs font-semibold text-gray-300 tracking-wide bg-black/50 px-2.5 py-0.5 rounded border border-gray-800 w-max">
+          SOMBRAS RESTANTES: <span id="hudEnemyCount" class="text-amber-400 font-bold">0</span>
+        </div>
+      </div>
+
+      <!-- Essence & Score -->
+      <div class="flex flex-col items-end gap-1.5">
+        <div class="flex items-center gap-2 px-3 py-1 bg-gradient-to-r from-amber-900/80 to-yellow-900/80 border border-amber-500/60 rounded-lg shadow-lg">
+          <i class="fa-solid fa-gem text-amber-400 text-sm"></i>
+          <span id="hudEssence" class="font-teko text-xl sm:text-2xl font-bold text-amber-200">0</span>
+          <span class="text-[10px] text-amber-400/90 font-bold uppercase">Esencia</span>
+        </div>
+        <div class="text-xs text-gray-300 flex items-center gap-3 bg-black/60 px-2.5 py-1 rounded border border-gray-800">
+          <span>BAJAS: <span id="hudKills" class="text-amber-400 font-bold">0</span></span>
+          <span>SCORE: <span id="hudScore" class="text-yellow-400 font-bold">0</span></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Center Raid Alert Notice -->
+    <div id="raidBanner" class="self-center text-center transition-all duration-500 opacity-0 transform scale-90 pointer-events-none">
+      <h2 id="raidTitle" class="text-3xl sm:text-5xl font-teko text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-orange-400 to-red-400 tracking-wider drop-shadow-[0_2px_12px_rgba(217,119,6,0.8)]">
+        RAID 1
+      </h2>
+      <p id="raidSubtitle" class="text-xs sm:text-sm text-gray-200 font-semibold uppercase tracking-widest bg-black/60 px-3 py-1 rounded">
+        Oleada de criaturas en aproximación
+      </p>
+    </div>
+
+    <!-- Bottom Health and Weapon Arsenal Info -->
+    <div class="flex justify-between items-end w-full">
+      <!-- Player Health -->
+      <div class="flex flex-col gap-1 w-44 sm:w-64 max-w-[48%]">
+        <div class="flex justify-between text-xs font-bold tracking-wider text-gray-200">
+          <span class="flex items-center gap-1.5"><i class="fa-solid fa-heart-pulse text-red-400"></i> BLINDAJE</span>
+          <span id="hudHpText">100 / 100</span>
+        </div>
+        <div class="w-full h-3 bg-gray-950/90 rounded border border-red-500/50 p-0.5 overflow-hidden">
+          <div id="hudHpBar" class="h-full bg-gradient-to-r from-red-600 via-orange-500 to-amber-400 rounded transition-all duration-150" style="width: 100%;"></div>
+        </div>
+      </div>
+
+      <!-- Current Weapon & Magazine -->
+      <div class="flex flex-col items-end gap-1">
+        <div class="flex items-center gap-3 bg-black/75 border border-amber-500/50 px-3.5 py-1.5 rounded-lg shadow-lg">
+          <div class="flex flex-col text-right">
+            <span id="hudWeaponName" class="font-teko text-xl sm:text-2xl font-bold text-amber-300 leading-none">GLOCK 18</span>
+            <span id="hudWeaponSkin" class="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">TÁCTICO</span>
+          </div>
+          <div class="h-7 w-[1px] bg-amber-700/60 mx-0.5"></div>
+          <div class="flex items-baseline gap-1">
+            <span id="hudAmmoCur" class="font-teko text-3xl sm:text-4xl font-bold text-white leading-none">18</span>
+            <span class="text-gray-500 text-xs font-bold">/</span>
+            <span id="hudAmmoMax" class="font-teko text-lg sm:text-xl text-gray-400 leading-none">18</span>
+          </div>
+        </div>
+        <div id="hudReloadPrompt" class="text-[11px] font-bold text-amber-400 animate-pulse bg-black/70 px-2 py-0.5 rounded border border-amber-500/40 hidden">
+          [R] RECARGAR MUNICIÓN
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile Landscape Controls HUD (Touch Devices) -->
+  <div id="mobileControls" class="absolute inset-0 pointer-events-none z-30 hidden flex justify-between p-4 pb-6 items-end">
+    <!-- Left Move Joypad -->
+    <div id="touchMoveZone" class="pointer-events-auto w-32 h-32 rounded-full border-2 border-amber-500/40 bg-black/40 backdrop-blur-sm relative flex items-center justify-center">
+      <div id="touchMoveKnob" class="w-12 h-12 rounded-full bg-amber-500/70 shadow-[0_0_12px_#f59e0b] pointer-events-none"></div>
+    </div>
+
+    <!-- Right Controls: Reload & Fire Action -->
+    <div class="flex flex-col items-end gap-3 pointer-events-none">
+      <button id="touchReloadBtn" class="pointer-events-auto w-14 h-14 rounded-full bg-amber-700/80 border-2 border-amber-400 text-white font-bold text-xs shadow-lg flex items-center justify-center">
+        <i class="fa-solid fa-arrows-rotate text-lg"></i>
+      </button>
+      <button id="touchShootBtn" class="pointer-events-auto w-20 h-20 rounded-full bg-gradient-to-tr from-amber-600 to-orange-500 border-2 border-amber-300 text-white font-teko text-2xl font-bold shadow-[0_0_20px_rgba(245,158,11,0.5)] flex items-center justify-center">
+        FUEGO
+      </button>
+    </div>
+  </div>
+
+  <!-- Rotate Device Prompt (Mobile Portrait Warning) -->
+  <div id="landscapePrompt" class="absolute inset-0 z-50 bg-black/95 flex flex-col items-center justify-center text-center p-6 hidden">
+    <div class="w-16 h-16 rounded-2xl bg-amber-950/80 border border-amber-500 flex items-center justify-center mb-4 text-amber-400 text-3xl animate-bounce">
+      <i class="fa-solid fa-mobile-screen-button rotate-90"></i>
+    </div>
+    <h3 class="text-2xl font-teko font-bold text-amber-400 mb-2">GIRA TU DISPOSITIVO A HORIZONTAL</h3>
+    <p class="text-xs text-gray-300 max-w-xs mb-5">Para una experiencia óptima y visión táctica amplia, juega en modo apaisado.</p>
+    <button id="btnRequestLandscape" class="btn-tactical px-6 py-2.5 rounded font-teko text-lg text-white font-bold">
+      ACTIVAR MODO HORIZONTAL
+    </button>
+  </div>
+
+  <!-- Start Screen -->
+  <div id="startScreen" class="absolute inset-0 z-40 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+    <div class="max-w-md w-full ui-panel rounded-2xl p-6 sm:p-8 flex flex-col items-center text-center shadow-2xl">
+      <div class="w-16 h-16 rounded-2xl bg-amber-950/90 border border-amber-500 flex items-center justify-center mb-3 text-amber-400 text-3xl shadow-[0_0_15px_rgba(217,119,6,0.4)]">
+        <i class="fa-solid fa-crosshairs"></i>
+      </div>
+      <h1 class="text-4xl sm:text-5xl font-teko font-bold text-white tracking-wider leading-none mb-1">SHADOW RAID 3D</h1>
+      <p class="text-xs text-amber-400 font-semibold mb-5 tracking-widest uppercase">Wilderness FPS Survival</p>
+
+      <div class="bg-black/60 border border-gray-800 rounded-lg p-3 w-full text-left text-xs text-gray-300 mb-5 space-y-1.5">
+        <p class="text-amber-300 font-bold uppercase text-[11px] pb-1 border-b border-gray-800">Controles & Tácticas:</p>
+        <p><span class="text-white font-bold">[W, A, S, D]</span>: Desplazamiento táctico con inercia.</p>
+        <p><span class="text-white font-bold">[Ratón / Clic]</span>: Apuntar y disparar arma POV.</p>
+        <p><span class="text-white font-bold">[R]</span>: Recargar cargador.</p>
+        <p><span class="text-white font-bold">[Sensibilidad]</span>: Ajustable en cualquier momento desde ajustes.</p>
+      </div>
+
+      <div class="flex flex-col sm:flex-row gap-3 w-full">
+        <button id="btnPlayGame" class="btn-tactical flex-1 py-3 px-6 rounded-lg text-white font-teko text-2xl font-bold tracking-wider shadow-lg">
+          <i class="fa-solid fa-play mr-2"></i> INICIAR MISIÓN
+        </button>
+        <button id="btnOpenShopStart" class="py-3 px-5 rounded-lg bg-gray-900 border border-amber-500/60 text-amber-300 hover:text-white font-teko text-xl font-bold tracking-wider">
+          <i class="fa-solid fa-store mr-1.5"></i> ARSENAL
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Game Over Screen -->
+  <div id="gameOverScreen" class="absolute inset-0 z-40 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 hidden">
+    <div class="max-w-md w-full ui-panel border-red-600/70 rounded-2xl p-6 sm:p-8 flex flex-col items-center text-center shadow-2xl">
+      <div class="w-16 h-16 rounded-full bg-red-950/80 border border-red-500 flex items-center justify-center mb-3 text-red-500 text-3xl shadow-[0_0_20px_rgba(239,68,68,0.5)]">
+        <i class="fa-solid fa-skull"></i>
+      </div>
+      <h2 class="text-4xl sm:text-5xl font-teko font-bold text-red-500 tracking-wider mb-1 leading-none">CAÍSTE EN COMBATE</h2>
+      <p class="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-5">Las sombras reclamaron el valle</p>
+
+      <div class="grid grid-cols-3 gap-2 w-full bg-black/70 border border-gray-800 rounded-lg p-3 mb-5 font-teko">
+        <div class="flex flex-col">
+          <span class="text-[11px] text-gray-400">RAID ALCANZADO</span>
+          <span id="goRaid" class="text-2xl font-bold text-white">1</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-[11px] text-gray-400">CRIATURAS</span>
+          <span id="goKills" class="text-2xl font-bold text-red-400">0</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-[11px] text-gray-400">ESENCIA GANADA</span>
+          <span id="goCredits" class="text-2xl font-bold text-amber-400">+0</span>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between w-full px-4 py-2 bg-amber-950/40 border border-amber-500/40 rounded-lg mb-5 font-teko text-xl">
+        <span class="text-gray-300">BANCO DE ESENCIA:</span>
+        <span class="font-bold text-amber-300 flex items-center gap-1.5">
+          <i class="fa-solid fa-gem text-amber-400 text-sm"></i>
+          <span id="goTotalCredits">0</span>
+        </span>
+      </div>
+
+      <div class="flex flex-col sm:flex-row gap-3 w-full">
+        <button id="btnRetry" class="btn-tactical flex-1 py-2.5 px-4 rounded-lg text-white font-teko text-xl font-bold tracking-wider">
+          <i class="fa-solid fa-rotate-right mr-1.5"></i> REINTENTAR
+        </button>
+        <button id="btnOpenShopDead" class="flex-1 py-2.5 px-4 rounded-lg bg-gray-900 border border-amber-500 text-amber-300 hover:text-white font-teko text-xl font-bold tracking-wider">
+          <i class="fa-solid fa-store mr-1.5"></i> TIENDA
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings Dialog (Sensitivity & Landscape Control) -->
+  <div id="settingsModal" class="absolute inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4 hidden">
+    <div class="max-w-md w-full ui-panel rounded-2xl p-6 flex flex-col shadow-2xl">
+      <div class="flex justify-between items-center border-b border-gray-800 pb-3 mb-4">
+        <h3 class="text-2xl font-teko font-bold text-white tracking-wider flex items-center gap-2">
+          <i class="fa-solid fa-sliders text-amber-400"></i> CONFIGURACIÓN TÁCTICA
+        </h3>
+        <button id="btnCloseSettings" class="text-gray-400 hover:text-white text-lg">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="space-y-5 text-sm text-gray-300">
+        <!-- Mouse Sens -->
+        <div>
+          <div class="flex justify-between font-bold mb-1">
+            <span>Sensibilidad de Ratón (PC):</span>
+            <span id="labelMouseSens" class="text-amber-400 font-teko text-lg">1.0</span>
+          </div>
+          <input id="sliderMouseSens" type="range" min="0.2" max="3.0" step="0.1" value="1.0" class="w-full accent-amber-500 bg-gray-800 rounded h-2">
+        </div>
+
+        <!-- Touch Sens -->
+        <div>
+          <div class="flex justify-between font-bold mb-1">
+            <span>Sensibilidad Táctil (Móvil):</span>
+            <span id="labelTouchSens" class="text-amber-400 font-teko text-lg">1.0</span>
+          </div>
+          <input id="sliderTouchSens" type="range" min="0.2" max="3.0" step="0.1" value="1.0" class="w-full accent-amber-500 bg-gray-800 rounded h-2">
+        </div>
+
+        <!-- Screen Orientation Lock button -->
+        <div class="pt-2 border-t border-gray-800 flex justify-between items-center">
+          <div>
+            <div class="font-bold text-white">Modo Horizontal / Pantalla Completa:</div>
+            <div class="text-[11px] text-gray-400">Bloquea orientación en móvil</div>
+          </div>
+          <button id="btnToggleLandscape" class="btn-tactical px-3 py-1.5 rounded text-white font-teko text-base font-bold">
+            <i class="fa-solid fa-expand mr-1"></i> ACTIVAR
+          </button>
+        </div>
+      </div>
+
+      <button id="btnSaveSettings" class="btn-tactical mt-6 py-2 rounded-lg font-teko text-xl font-bold text-white tracking-wider">
+        APLICAR Y CERRAR
+      </button>
+    </div>
+  </div>
+
+  <!-- Armory & Upgrades Shop Screen -->
+  <div id="shopScreen" class="absolute inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-3 sm:p-6 hidden">
+    <div class="max-w-4xl w-full h-[90vh] ui-panel rounded-2xl flex flex-col overflow-hidden shadow-2xl">
+      <!-- Header -->
+      <div class="p-4 bg-gray-900/90 border-b border-gray-800 flex justify-between items-center">
+        <div class="flex items-center gap-3">
+          <i class="fa-solid fa-shield-halved text-amber-400 text-2xl"></i>
+          <div>
+            <h3 class="text-2xl sm:text-3xl font-teko font-bold text-white tracking-wider leading-none">ARSENAL Y MEJORAS</h3>
+            <p class="text-[11px] text-gray-400">Desbloquea rifles de precisión, aspectos de camuflaje y blindaje táctico</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="bg-amber-950/80 border border-amber-500/60 px-3 py-1 rounded-lg flex items-center gap-2">
+            <i class="fa-solid fa-gem text-amber-400"></i>
+            <span id="shopCreditDisplay" class="font-teko text-2xl font-bold text-amber-300 leading-none">0</span>
+          </div>
+          <button id="btnCloseShop" class="w-8 h-8 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white flex items-center justify-center">
+            <i class="fa-solid fa-xmark text-lg"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="flex border-b border-gray-800 bg-gray-950 px-4 pt-2">
+        <button id="tabWeapons" class="px-5 py-2 font-teko text-xl font-bold border-b-2 border-amber-500 text-amber-400 flex items-center gap-2">
+          <i class="fa-solid fa-gun"></i> ARMAS POV
+        </button>
+        <button id="tabUpgrades" class="px-5 py-2 font-teko text-xl font-bold border-b-2 border-transparent text-gray-400 hover:text-gray-200 flex items-center gap-2">
+          <i class="fa-solid fa-microchip"></i> MEJORAS TÁCTICAS
+        </button>
+        <button id="tabSkins" class="px-5 py-2 font-teko text-xl font-bold border-b-2 border-transparent text-gray-400 hover:text-gray-200 flex items-center gap-2">
+          <i class="fa-solid fa-palette"></i> SKINS REALISTAS
+        </button>
+      </div>
+
+      <!-- Content Panes -->
+      <div class="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+        <div id="paneWeapons" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+        <div id="paneUpgrades" class="grid grid-cols-1 md:grid-cols-2 gap-4 hidden"></div>
+        <div id="paneSkins" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 hidden"></div>
+      </div>
+
+      <!-- Footer -->
+      <div class="p-3 sm:p-4 bg-gray-900/80 border-t border-gray-800 flex justify-between items-center text-xs text-gray-400">
+        <span>Datos guardados automáticamente.</span>
+        <button id="btnShopToGame" class="btn-tactical px-6 py-2 rounded font-teko text-xl font-bold text-white tracking-wider">
+          VOLVER AL COMBATE
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="absolute top-5 left-1/2 transform -translate-x-1/2 z-50 bg-gray-900/95 border border-amber-500 px-5 py-2 rounded-lg text-amber-300 font-teko text-lg flex items-center gap-2 transition-all duration-300 opacity-0 pointer-events-none -translate-y-4 shadow-xl">
+    <i class="fa-solid fa-circle-check"></i>
+    <span id="toastMsg">Alerta</span>
+  </div>
+
+<script>
+  /*
+   * Realistic Web Audio API Sound Synthesizer with spatial dampening & reverb
+   */
+  const SoundFX = (function() {
+    let ctx = null;
+
+    function getAudioCtx() {
+      if (!ctx) {
+        const AudioClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioClass) ctx = new AudioClass();
+      }
+      if (ctx && ctx.state === 'suspended') {
+        ctx.resume();
+      }
+      return ctx;
+    }
+
+    return {
+      init: () => getAudioCtx(),
+      playGunshot(type) {
+        const ac = getAudioCtx();
+        if (!ac) return;
+        const now = ac.currentTime;
+
+        // Noise burst for projectile explosion
+        const bufferSize = ac.sampleRate * 0.22;
+        const noiseBuffer = ac.createBuffer(1, bufferSize, ac.sampleRate);
+        const output = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          output[i] = Math.random() * 2 - 1;
+        }
+
+        const whiteNoise = ac.createBufferSource();
+        whiteNoise.buffer = noiseBuffer;
+
+        const noiseFilter = ac.createBiquadFilter();
+        noiseFilter.type = 'lowpass';
+
+        const noiseGain = ac.createGain();
+
+        // Punch Oscillator for mechanical bass punch
+        const osc = ac.createOscillator();
+        const oscGain = ac.createGain();
+
+        if (type === 'glock') {
+          noiseFilter.frequency.value = 1600;
+          noiseGain.gain.setValueAtTime(0.35, now);
+          noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(280, now);
+          osc.frequency.exponentialRampToValueAtTime(45, now + 0.12);
+          oscGain.gain.setValueAtTime(0.45, now);
+          oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+        } else if (type === 'spas12') {
+          noiseFilter.frequency.value = 1200;
+          noiseGain.gain.setValueAtTime(0.65, now);
+          noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.24);
+
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(220, now);
+          osc.frequency.exponentialRampToValueAtTime(30, now + 0.25);
+          oscGain.gain.setValueAtTime(0.75, now);
+          oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+        } else if (type === 'mp5') {
+          noiseFilter.frequency.value = 2200;
+          noiseGain.gain.setValueAtTime(0.3, now);
+          noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+
+          osc.type = 'square';
+          osc.frequency.setValueAtTime(360, now);
+          osc.frequency.exponentialRampToValueAtTime(55, now + 0.09);
+          oscGain.gain.setValueAtTime(0.35, now);
+          oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.09);
+        } else if (type === 'ak47') {
+          noiseFilter.frequency.value = 1400;
+          noiseGain.gain.setValueAtTime(0.55, now);
+          noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.16);
+
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(320, now);
+          osc.frequency.exponentialRampToValueAtTime(35, now + 0.18);
+          oscGain.gain.setValueAtTime(0.6, now);
+          oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.18);
+        } else if (type === 'sniper') {
+          // Deep high-caliber sniper gunshot
+          noiseFilter.frequency.value = 1000;
+          noiseGain.gain.setValueAtTime(0.85, now);
+          noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(450, now);
+          osc.frequency.exponentialRampToValueAtTime(25, now + 0.35);
+          oscGain.gain.setValueAtTime(0.9, now);
+          oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+        }
+
+        whiteNoise.connect(noiseFilter);
+        noiseFilter.connect(noiseGain);
+        noiseGain.connect(ac.destination);
+        whiteNoise.start(now);
+        whiteNoise.stop(now + 0.35);
+
+        osc.connect(oscGain);
+        oscGain.connect(ac.destination);
+        osc.start(now);
+        osc.stop(now + 0.35);
+      },
+
+      playStep() {
+        const ac = getAudioCtx();
+        if (!ac) return;
+        const now = ac.currentTime;
+        // Subtle terrain footstep
+        const osc = ac.createOscillator();
+        const gain = ac.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(80, now);
+        osc.frequency.exponentialRampToValueAtTime(30, now + 0.06);
+        gain.gain.setValueAtTime(0.12, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.06);
+        osc.connect(gain);
+        gain.connect(ac.destination);
+        osc.start(now);
+        osc.stop(now + 0.06);
+      },
+
+      playHit() {
+        const ac = getAudioCtx();
+        if (!ac) return;
+        const now = ac.currentTime;
+        const osc = ac.createOscillator();
+        const gain = ac.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(800, now);
+        osc.frequency.exponentialRampToValueAtTime(220, now + 0.06);
+        gain.gain.setValueAtTime(0.25, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.06);
+        osc.connect(gain);
+        gain.connect(ac.destination);
+        osc.start(now);
+        osc.stop(now + 0.06);
+      },
+
+      playReload() {
+        const ac = getAudioCtx();
+        if (!ac) return;
+        const now = ac.currentTime;
+        // Mechanical magazine release & click
+        const osc = ac.createOscillator();
+        const gain = ac.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(450, now);
+        osc.frequency.exponentialRampToValueAtTime(750, now + 0.15);
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+        osc.connect(gain);
+        gain.connect(ac.destination);
+        osc.start(now);
+        osc.stop(now + 0.15);
+      },
+
+      playEssence() {
+        const ac = getAudioCtx();
+        if (!ac) return;
+        const now = ac.currentTime;
+        const osc = ac.createOscillator();
+        const gain = ac.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(650, now);
+        osc.frequency.exponentialRampToValueAtTime(1100, now + 0.15);
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+        osc.connect(gain);
+        gain.connect(ac.destination);
+        osc.start(now);
+        osc.stop(now + 0.15);
+      },
+
+      playMonsterGrowl() {
+        const ac = getAudioCtx();
+        if (!ac) return;
+        const now = ac.currentTime;
+        const osc = ac.createOscillator();
+        const gain = ac.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(85, now);
+        osc.frequency.linearRampToValueAtTime(40, now + 0.35);
+        gain.gain.setValueAtTime(0.25, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+        osc.connect(gain);
+        gain.connect(ac.destination);
+        osc.start(now);
+        osc.stop(now + 0.35);
+      },
+
+      playDeath() {
+        const ac = getAudioCtx();
+        if (!ac) return;
+        const now = ac.currentTime;
+        const osc = ac.createOscillator();
+        const gain = ac.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(120, now);
+        osc.frequency.exponentialRampToValueAtTime(20, now + 0.9);
+        gain.gain.setValueAtTime(0.6, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.9);
+        osc.connect(gain);
+        gain.connect(ac.destination);
+        osc.start(now);
+        osc.stop(now + 0.9);
+      }
+    };
+  })();
+</script>
+
+<script>
+  /*
+   * Weapons, realistic skins, upgrades and persistent player profile
+   */
+  const WEAPONS = {
+    glock: {
+      id: 'glock',
+      name: 'Glock 18 Táctica',
+      desc: 'Pistola de mano ligera con control de tiro inmediato.',
+      price: 0,
+      damage: 26,
+      fireRate: 140,
+      capacity: 18,
+      reloadTime: 1200,
+      recoilPitch: 0.045,
+      pellets: 1,
+      speed: 130,
+      color: 0xfef08a
+    },
+    spas12: {
+      id: 'spas12',
+      name: 'SPAS-12 Asalto',
+      desc: 'Escopeta de corredera pesada. 8 perdigones de gran impacto.',
+      price: 650,
+      damage: 20,
+      fireRate: 750,
+      capacity: 8,
+      reloadTime: 1900,
+      recoilPitch: 0.12,
+      pellets: 8,
+      spread: 0.08,
+      speed: 100,
+      color: 0xfb923c
+    },
+    mp5: {
+      id: 'mp5',
+      name: 'MP5 Táctico',
+      desc: 'Subfusil equilibrado con cadencia rápida para control de masas.',
+      price: 1300,
+      damage: 22,
+      fireRate: 95,
+      capacity: 30,
+      reloadTime: 1300,
+      recoilPitch: 0.035,
+      pellets: 1,
+      speed: 135,
+      color: 0xfde047
+    },
+    ak47: {
+      id: 'ak47',
+      name: 'AK-47 Asalto Pesado',
+      desc: 'Fusil de asalto militar con gran pegada y penetración.',
+      price: 2400,
+      damage: 54,
+      pierce: 1,
+      fireRate: 155,
+      capacity: 30,
+      reloadTime: 1550,
+      recoilPitch: 0.07,
+      pellets: 1,
+      speed: 145,
+      color: 0xf97316
+    },
+    sniper: {
+      id: 'sniper',
+      name: 'AWP Francotirador',
+      desc: 'Rifle de cerrojo de calibre pesado. Fulmina y perfora objetivos múltiples.',
+      price: 4500,
+      damage: 240,
+      pierce: 3,
+      fireRate: 1100,
+      capacity: 5,
+      reloadTime: 2200,
+      recoilPitch: 0.16,
+      pellets: 1,
+      speed: 190,
+      color: 0xffedd5
+    }
+  };
+
+  const UPGRADES = [
+    { id: 'health', name: 'Blindaje de Kevlar', desc: '+25 de salud máxima por nivel', baseCost: 180, mult: 1.5, max: 5, icon: 'fa-shield-halved' },
+    { id: 'damage', name: 'Punta Blindada (AP)', desc: '+12% de daño balístico', baseCost: 240, mult: 1.6, max: 5, icon: 'fa-crosshairs' },
+    { id: 'reload', name: 'Alimentación Táctica', desc: '+15% velocidad de recarga', baseCost: 200, mult: 1.5, max: 4, icon: 'fa-bolt' },
+    { id: 'speed', name: 'Botas de Marcha Ligera', desc: '+8% de agilidad y movimiento', baseCost: 220, mult: 1.5, max: 4, icon: 'fa-person-running' }
+  ];
+
+  const SKINS = [
+    { id: 'camo', name: 'Camo Selva', desc: 'Camuflaje táctico verde oliva y tierra', price: 0, bodyColor: 0x3d4a36, trimColor: 0x222b1f },
+    { id: 'blued', name: 'Pavonado Mate', desc: 'Acero templado con tratamiento de oxidación', price: 600, bodyColor: 0x262b32, trimColor: 0x14181e },
+    { id: 'gold', name: 'Oro Grabado', desc: 'Acabado ceremonial en oro con relieves', price: 1600, bodyColor: 0xb8860b, trimColor: 0xdfb15b },
+    { id: 'carbon', name: 'Fibra de Carbono', desc: 'Polímeros ligeros de kevlar y grafito', price: 2900, bodyColor: 0x1a1c20, trimColor: 0x475569 }
+  ];
+
+  const SAVE_KEY = 'SHADOW_RAID_3D_REALISTIC_V2';
+  let profile = {
+    credits: 0,
+    equippedWeapon: 'glock',
+    unlockedWeapons: ['glock'],
+    equippedSkin: 'camo',
+    unlockedSkins: ['camo'],
+    upgrades: { health: 0, damage: 0, reload: 0, speed: 0 },
+    mouseSensitivity: 0.8,
+    touchSensitivity: 0.9,
+    highestRaid: 1,
+    totalKills: 0
+  };
+
+  function loadSavedData() {
+    try {
+      const data = localStorage.getItem(SAVE_KEY);
+      if (data) {
+        profile = Object.assign(profile, JSON.parse(data));
+      }
+    } catch (e) {
+      console.warn('Profile load fail', e);
+    }
+
+    // Update settings sliders
+    const sm = document.getElementById('sliderMouseSens');
+    const st = document.getElementById('sliderTouchSens');
+    if (sm) sm.value = profile.mouseSensitivity;
+    if (st) st.value = profile.touchSensitivity;
+    document.getElementById('labelMouseSens').textContent = profile.mouseSensitivity.toFixed(1);
+    document.getElementById('labelTouchSens').textContent = profile.touchSensitivity.toFixed(1);
+
+    updateHudCreditDisplays();
+  }
+
+  function saveGameData() {
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify(profile));
+    } catch (e) {
+      console.warn('Profile save fail', e);
+    }
+    updateHudCreditDisplays();
+  }
+
+  function updateHudCreditDisplays() {
+    const elH = document.getElementById('hudEssence');
+    const elS = document.getElementById('shopCreditDisplay');
+    const elG = document.getElementById('goTotalCredits');
+    if (elH) elH.textContent = profile.credits;
+    if (elS) elS.textContent = profile.credits;
+    if (elG) elG.textContent = profile.credits;
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    const tm = document.getElementById('toastMsg');
+    tm.textContent = msg;
+    t.classList.remove('opacity-0', '-translate-y-4');
+    t.classList.add('opacity-100', 'translate-y-0');
+    setTimeout(() => {
+      t.classList.remove('opacity-100', 'translate-y-0');
+      t.classList.add('opacity-0', '-translate-y-4');
+    }, 2000);
+  }
+</script>
+
+<script>
+  let scene, camera, renderer;
+  let playerBody, sunLight, muzzleLight;
+  let weaponGroup, activeWeaponMesh = null, slideMesh = null;
+  const monsters = [];
+  const activeBullets = [];
+  const hitParticles = [];
+  const essenceOrbs = [];
+
+  const arenaRadius = 75;
+
+  // Realistic Tactical Player Physics
+  const player = {
+    x: 0, z: 0,
+    vx: 0, vz: 0, // smooth velocity inertia
+    speed: 6.2,   // Reduced base movement speed for tactical realism
+    hp: 100,
+    maxHp: 100,
+    ammo: 18,
+    isReloading: false,
+    reloadTimer: 0,
+    reloadDuration: 1.2,
+    lastShot: 0,
+    bobAngle: 0,
+    stepTimer: 0,
+    recoilPitch: 0,
+    slideOffset: 0,
+    yaw: 0,
+    pitch: 0
+  };
+
+  const game = {
+    running: false,
+    raid: 1,
+    killsThisRun: 0,
+    creditsThisRun: 0,
+    score: 0,
+    startTime: 0,
+    enemiesRemainingToSpawn: 0,
+    spawnTimer: 0
+  };
+
+  // Keyboard map
+  const keys = {};
+  window.addEventListener('keydown', (e) => {
+    keys[e.code] = true;
+    if (e.code === 'KeyR' && game.running) tryReload();
+  });
+  window.addEventListener('keyup', (e) => {
+    keys[e.code] = false;
+  });
+
+  const canvas = document.getElementById('gameCanvas');
+  let isPointerLocked = false;
+
+  canvas.addEventListener('click', () => {
+    if (!game.running) return;
+    SoundFX.init();
+    if (!isTouchDevice()) {
+      canvas.requestPointerLock = canvas.requestPointerLock || canvas.mozRequestPointerLock;
+      if (canvas.requestPointerLock) canvas.requestPointerLock();
+    }
+  });
+
+  document.addEventListener('pointerlockchange', () => {
+    isPointerLocked = (document.pointerLockElement === canvas);
+  });
+
+  // Mouse input with reduced sensitivity
+  document.addEventListener('mousemove', (e) => {
+    if (isPointerLocked && game.running) {
+      const baseSens = 0.0012 * profile.mouseSensitivity;
+      player.yaw -= e.movementX * baseSens;
+      player.pitch -= e.movementY * baseSens;
+      player.pitch = Math.max(-Math.PI / 2.3, Math.min(Math.PI / 2.3, player.pitch));
+    }
+  });
+
+  let isMouseDown = false;
+  window.addEventListener('mousedown', (e) => {
+    if (e.button === 0) {
+      isMouseDown = true;
+      if (game.running && isPointerLocked) tryShoot();
+    }
+  });
+  window.addEventListener('mouseup', (e) => {
+    if (e.button === 0) isMouseDown = false;
+  });
+
+  function isTouchDevice() {
+    return ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+  }
+
+  /* Procedural Canvas Bump/Diffuse generation for natural terrain */
+  function createGroundCanvas() {
+    const c = document.createElement('canvas');
+    c.width = 512;
+    c.height = 512;
+    const ctx = c.getContext('2d');
+
+    // Natural earth & golden grass base
+    ctx.fillStyle = '#423728';
+    ctx.fillRect(0, 0, 512, 512);
+
+    // Speckles of dried earth and vegetation
+    for (let i = 0; i < 15000; i++) {
+      const x = Math.random() * 512;
+      const y = Math.random() * 512;
+      const r = Math.random() * 2 + 1;
+      const colRoll = Math.random();
+      if (colRoll < 0.45) {
+        ctx.fillStyle = 'rgba(78, 86, 52, 0.4)'; // dry grass
+      } else if (colRoll < 0.8) {
+        ctx.fillStyle = 'rgba(105, 84, 56, 0.35)'; // rocky earth
+      } else {
+        ctx.fillStyle = 'rgba(38, 30, 20, 0.5)'; // pebble shadow
+      }
+      ctx.fillRect(x, y, r, r);
+    }
+    return c;
+  }
+
+  function initThree() {
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xd49b6a); // Golden sunset horizon
+    scene.fog = new THREE.FogExp2(0xc88f60, 0.016); // Soft warm distance fog
+
+    camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.1, 200);
+
+    renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, powerPreference: 'high-performance' });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+    // Natural Sky Hemisphere Light (Warm sky / cool earth bounce)
+    const hemiLight = new THREE.HemisphereLight(0xffdfba, 0x5c4838, 0.85);
+    scene.add(hemiLight);
+
+    // Warm Sunset Directional Sun
+    sunLight = new THREE.DirectionalLight(0xffa257, 1.4);
+    sunLight.position.set(45, 35, 45);
+    sunLight.castShadow = true;
+    sunLight.shadow.mapSize.width = 2048;
+    sunLight.shadow.mapSize.height = 2048;
+    sunLight.shadow.camera.near = 0.5;
+    sunLight.shadow.camera.far = 140;
+    const d = 55;
+    sunLight.shadow.camera.left = -d;
+    sunLight.shadow.camera.right = d;
+    sunLight.shadow.camera.top = d;
+    sunLight.shadow.camera.bottom = -d;
+    sunLight.shadow.bias = -0.0005;
+    scene.add(sunLight);
+
+    // Player Root
+    playerBody = new THREE.Group();
+    playerBody.position.set(0, 1.6, 0);
+    playerBody.add(camera);
+    scene.add(playerBody);
+
+    // Muzzle flash point light
+    muzzleLight = new THREE.PointLight(0xffc078, 0, 14);
+    muzzleLight.position.set(0.18, -0.15, -0.7);
+    camera.add(muzzleLight);
+
+    // Weapon Attached to POV
+    weaponGroup = new THREE.Group();
+    camera.add(weaponGroup);
+
+    buildNaturalOutdoorScene();
+    rebuildWeaponModel();
+    window.addEventListener('resize', onWindowResize);
+  }
+
+  function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+
+  /* Natural Outdoor Terrain with stones, trees, and stone ruins */
+  function buildNaturalOutdoorScene() {
+    // Ground texture
+    const groundTex = new THREE.CanvasTexture(createGroundCanvas());
+    groundTex.wrapS = THREE.RepeatWrapping;
+    groundTex.wrapT = THREE.RepeatWrapping;
+    groundTex.repeat.set(16, 16);
+
+    const groundGeo = new THREE.PlaneGeometry(arenaRadius * 2.4, arenaRadius * 2.4, 40, 40);
+    // Subtle terrain elevation variance
+    const pos = groundGeo.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const vx = pos.getX(i);
+      const vy = pos.getY(i);
+      if (Math.hypot(vx, vy) > 10) {
+        pos.setZ(i, (Math.sin(vx * 0.1) * Math.cos(vy * 0.1)) * 0.6);
+      }
+    }
+    groundGeo.computeVertexNormals();
+
+    const groundMat = new THREE.MeshStandardMaterial({
+      map: groundTex,
+      roughness: 0.9,
+      metalness: 0.05
+    });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    // Perimeter Natural Boundary: Rocks, Cliffs and Dead Pine Trees
+    const rockMat = new THREE.MeshStandardMaterial({ color: 0x473e35, roughness: 0.85, metalness: 0.1 });
+    const woodMat = new THREE.MeshStandardMaterial({ color: 0x33261d, roughness: 0.9 });
+    const pineMat = new THREE.MeshStandardMaterial({ color: 0x2b3b28, roughness: 0.8 });
+
+    // Place natural perimeter boulders and pine trees
+    const count = 38;
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2;
+      const r = arenaRadius + (Math.random() * 6 - 3);
+      const x = Math.cos(angle) * r;
+      const z = Math.sin(angle) * r;
+
+      // Boulder
+      const rockGeo = new THREE.DodecahedronGeometry(3 + Math.random() * 2.5, 1);
+      const rock = new THREE.Mesh(rockGeo, rockMat);
+      rock.position.set(x, 2, z);
+      rock.rotation.set(Math.random(), Math.random(), Math.random());
+      rock.castShadow = true;
+      rock.receiveShadow = true;
+      scene.add(rock);
+
+      // Outdoor Pine Tree
+      if (i % 2 === 0) {
+        const treeGroup = new THREE.Group();
+        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.45, 5, 7), woodMat);
+        trunk.position.y = 2.5;
+        trunk.castShadow = true;
+        treeGroup.add(trunk);
+
+        for (let j = 0; j < 3; j++) {
+          const cone = new THREE.Mesh(new THREE.ConeGeometry(2.4 - j * 0.5, 2.8, 7), pineMat);
+          cone.position.y = 4.2 + j * 1.8;
+          cone.castShadow = true;
+          treeGroup.add(cone);
+        }
+        treeGroup.position.set(x + (Math.random() * 4 - 2), 0, z + (Math.random() * 4 - 2));
+        scene.add(treeGroup);
+      }
+    }
+
+    // Interior Ancient Stone Ruins (Tactical Cover)
+    const ruinPositions = [
+      [-18, -18], [18, -18], [-18, 18], [18, 18],
+      [0, -28], [0, 28], [-28, 0], [28, 0]
+    ];
+    ruinPositions.forEach(p => {
+      const pillarGeo = new THREE.BoxGeometry(2.4, 5 + Math.random() * 2, 2.4);
+      const pillar = new THREE.Mesh(pillarGeo, rockMat);
+      pillar.position.set(p[0], 2.5, p[1]);
+      pillar.castShadow = true;
+      pillar.receiveShadow = true;
+      scene.add(pillar);
+    });
+  }
+</script>
+
+<script>
+  /*
+   * Procedural POV Weapon Models with animated slide / bolt recoil
+   */
+  function rebuildWeaponModel() {
+    if (activeWeaponMesh) {
+      weaponGroup.remove(activeWeaponMesh);
+    }
+
+    const currentWp = WEAPONS[profile.equippedWeapon] || WEAPONS.glock;
+    const skin = SKINS.find(s => s.id === profile.equippedSkin) || SKINS[0];
+
+    const modelHolder = new THREE.Group();
+
+    const bodyMat = new THREE.MeshStandardMaterial({
+      color: skin.bodyColor,
+      roughness: 0.5,
+      metalness: 0.4
+    });
+
+    const metalMat = new THREE.MeshStandardMaterial({
+      color: skin.trimColor,
+      roughness: 0.35,
+      metalness: 0.8
+    });
+
+    const polymerGripMat = new THREE.MeshStandardMaterial({
+      color: 0x18181b,
+      roughness: 0.85,
+      metalness: 0.1
+    });
+
+    slideMesh = null;
+
+    if (currentWp.id === 'glock') {
+      // Glock 18: Frame, Polymer Grip, and Moving Slide
+      const grip = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.18, 0.16), polymerGripMat);
+      grip.position.set(0, -0.07, 0.05);
+      grip.rotation.x = -0.22;
+      modelHolder.add(grip);
+
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.07, 0.32), bodyMat);
+      frame.position.set(0, 0.01, 0);
+      modelHolder.add(frame);
+
+      // Reciprocating Slide
+      slideMesh = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.065, 0.33), metalMat);
+      slideMesh.position.set(0, 0.06, -0.01);
+      modelHolder.add(slideMesh);
+
+      // Barrel
+      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.1, 10), metalMat);
+      barrel.rotation.x = Math.PI / 2;
+      barrel.position.set(0, 0.06, -0.19);
+      modelHolder.add(barrel);
+    } else if (currentWp.id === 'spas12') {
+      // SPAS-12 Shotgun
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.14, 0.65), bodyMat);
+      modelHolder.add(body);
+
+      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.85, 10), metalMat);
+      barrel.rotation.x = Math.PI / 2;
+      barrel.position.set(0, 0.03, -0.32);
+      modelHolder.add(barrel);
+
+      slideMesh = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.22), polymerGripMat);
+      slideMesh.position.set(0, -0.03, -0.18);
+      modelHolder.add(slideMesh);
+    } else if (currentWp.id === 'mp5') {
+      // MP5 Submachine Gun
+      const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.12, 0.52), bodyMat);
+      modelHolder.add(receiver);
+
+      const mag = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.25, 0.09), metalMat);
+      mag.position.set(0, -0.15, -0.06);
+      mag.rotation.x = 0.25;
+      modelHolder.add(mag);
+
+      const handguard = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.24, 10), polymerGripMat);
+      handguard.rotation.x = Math.PI / 2;
+      handguard.position.set(0, 0, -0.26);
+      modelHolder.add(handguard);
+
+      slideMesh = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.04, 0.08), metalMat);
+      slideMesh.position.set(-0.05, 0.06, -0.12);
+      modelHolder.add(slideMesh);
+    } else if (currentWp.id === 'ak47') {
+      // AK-47 Assault Rifle
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.14, 0.68), metalMat);
+      modelHolder.add(body);
+
+      const stock = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.12, 0.32), bodyMat);
+      stock.position.set(0, -0.04, 0.4);
+      modelHolder.add(stock);
+
+      const mag = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.3, 0.12), bodyMat);
+      mag.position.set(0, -0.18, -0.08);
+      mag.rotation.x = 0.38;
+      modelHolder.add(mag);
+
+      slideMesh = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.03, 0.08), metalMat);
+      slideMesh.position.set(0.05, 0.04, -0.1);
+      modelHolder.add(slideMesh);
+    } else if (currentWp.id === 'sniper') {
+      // AWP Heavy Sniper Rifle with Scope
+      const chassis = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.14, 0.95), bodyMat);
+      modelHolder.add(chassis);
+
+      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.8, 10), metalMat);
+      barrel.rotation.x = Math.PI / 2;
+      barrel.position.set(0, 0.04, -0.75);
+      modelHolder.add(barrel);
+
+      // Optical Scope
+      const scope = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.42, 12), metalMat);
+      scope.rotation.x = Math.PI / 2;
+      scope.position.set(0, 0.14, -0.1);
+      modelHolder.add(scope);
+
+      slideMesh = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.04, 0.12), metalMat);
+      slideMesh.position.set(0.05, 0.06, 0.05);
+      modelHolder.add(slideMesh);
+    }
+
+    // Tactical POV position (lower right quadrant)
+    modelHolder.position.set(0.24, -0.22, -0.46);
+    modelHolder.rotation.set(0, 0.02, 0);
+
+    weaponGroup.add(modelHolder);
+    activeWeaponMesh = modelHolder;
+
+    // HUD Text updates
+    document.getElementById('hudWeaponName').textContent = currentWp.name;
+    document.getElementById('hudWeaponSkin').textContent = skin.name;
+  }
+</script>
+
+<script>
+  /*
+   * Elaborate Articulated Shadow Beasts:
+   * - Biomechanical Quadruped Crawlers with spined carapaces and glowing red eyes
+   * - Horned Brutes with chitinous ridges and animated limbs
+   */
+  class ShadowBeast {
+    constructor(type, raid) {
+      this.type = type;
+      this.mesh = new THREE.Group();
+
+      let scale = 1;
+      let hpMult = 1;
+      let speedMult = 1;
+
+      if (type === 'crawler') {
+        scale = 0.85;
+        hpMult = 0.8;
+        speedMult = 1.35;
+      } else if (type === 'brute') {
+        scale = 1.5;
+        hpMult = 3.5;
+        speedMult = 0.65;
+      } else if (type === 'stalker') {
+        scale = 1.1;
+        hpMult = 1.3;
+        speedMult = 1.05;
+      }
+
+      this.speed = (0.042 + Math.min(0.035, raid * 0.003)) * speedMult;
+      this.maxHp = Math.round((50 + raid * 18) * hpMult);
+      this.hp = this.maxHp;
+      this.damage = Math.round((14 + raid * 2.5) * (type === 'brute' ? 1.8 : 1));
+      this.essenceValue = type === 'brute' ? 32 : (type === 'crawler' ? 10 : 16);
+      this.scoreValue = Math.round(this.maxHp * 1.6);
+      this.radius = 0.9 * scale;
+      this.hitCooldown = 0;
+      this.walkCycle = Math.random() * Math.PI * 2;
+
+      // Obsidian Chitinous Material with subtle specular highlights
+      const chitinMat = new THREE.MeshStandardMaterial({
+        color: 0x14161a,
+        roughness: 0.35,
+        metalness: 0.65
+      });
+
+      const hornMat = new THREE.MeshStandardMaterial({
+        color: 0x090a0d,
+        roughness: 0.6,
+        metalness: 0.2
+      });
+
+      // Segmented Carapace / Torso
+      this.torso = new THREE.Mesh(new THREE.BoxGeometry(0.7 * scale, 0.65 * scale, 1.2 * scale), chitinMat);
+      this.torso.position.y = 0.8 * scale;
+      this.torso.castShadow = true;
+      this.mesh.add(this.torso);
+
+      // Dorsal spines
+      for (let s = 0; s < 4; s++) {
+        const spine = new THREE.Mesh(new THREE.ConeGeometry(0.08 * scale, 0.45 * scale, 5), hornMat);
+        spine.rotation.x = -0.5;
+        spine.position.set(0, 0.4 * scale, (0.4 - s * 0.28) * scale);
+        this.torso.add(spine);
+      }
+
+      // Menacing Head
+      this.head = new THREE.Mesh(new THREE.BoxGeometry(0.55 * scale, 0.5 * scale, 0.65 * scale), chitinMat);
+      this.head.position.set(0, 0.95 * scale, 0.8 * scale);
+      this.head.castShadow = true;
+      this.mesh.add(this.head);
+
+      // Curved Horns / Mandibles
+      const hornL = new THREE.Mesh(new THREE.ConeGeometry(0.09 * scale, 0.6 * scale, 5), hornMat);
+      hornL.rotation.set(0.6, 0, -0.4);
+      hornL.position.set(-0.25 * scale, 0.25 * scale, 0.3 * scale);
+      this.head.add(hornL);
+
+      const hornR = new THREE.Mesh(new THREE.ConeGeometry(0.09 * scale, 0.6 * scale, 5), hornMat);
+      hornR.rotation.set(0.6, 0, 0.4);
+      hornR.position.set(0.25 * scale, 0.25 * scale, 0.3 * scale);
+      this.head.add(hornR);
+
+      // Glowing Crimson Eyes
+      const eyeMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+      const eyeGeo = new THREE.SphereGeometry(0.07 * scale, 6, 6);
+      const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
+      eyeL.position.set(-0.16 * scale, 0.08 * scale, 0.32 * scale);
+      const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
+      eyeR.position.set(0.16 * scale, 0.08 * scale, 0.32 * scale);
+      this.head.add(eyeL);
+      this.head.add(eyeR);
+
+      // Articulated 4 Limbs
+      this.legs = [];
+      const legGeo = new THREE.CylinderGeometry(0.08 * scale, 0.04 * scale, 0.9 * scale, 6);
+
+      const legOffsets = [
+        { x: -0.45 * scale, z: 0.4 * scale, sign: 1 },
+        { x: 0.45 * scale, z: 0.4 * scale, sign: -1 },
+        { x: -0.45 * scale, z: -0.4 * scale, sign: -1 },
+        { x: 0.45 * scale, z: -0.4 * scale, sign: 1 }
+      ];
+
+      legOffsets.forEach(pos => {
+        const legPivot = new THREE.Group();
+        legPivot.position.set(pos.x, 0.75 * scale, pos.z);
+        const legMesh = new THREE.Mesh(legGeo, chitinMat);
+        legMesh.position.y = -0.4 * scale;
+        legMesh.castShadow = true;
+        legPivot.add(legMesh);
+        this.mesh.add(legPivot);
+        this.legs.push({ pivot: legPivot, sign: pos.sign });
+      });
+
+      // Spawn at natural perimeter
+      const spawnAngle = Math.random() * Math.PI * 2;
+      const spawnDist = arenaRadius - 8;
+      this.mesh.position.set(Math.cos(spawnAngle) * spawnDist, 0, Math.sin(spawnAngle) * spawnDist);
+
+      scene.add(this.mesh);
+    }
+
+    update(dt) {
+      this.walkCycle += dt * 8;
+
+      // Skeletal limb swinging animation
+      this.legs.forEach(l => {
+        l.pivot.rotation.x = Math.sin(this.walkCycle) * 0.45 * l.sign;
+      });
+      this.head.rotation.y = Math.sin(this.walkCycle * 0.5) * 0.15;
+      this.torso.position.y = 0.8 + Math.abs(Math.sin(this.walkCycle)) * 0.08;
+
+      // Move toward player
+      const dx = player.x - this.mesh.position.x;
+      const dz = player.z - this.mesh.position.z;
+      const dist = Math.hypot(dx, dz);
+
+      if (dist > 0.1) {
+        this.mesh.position.x += (dx / dist) * this.speed;
+        this.mesh.position.z += (dz / dist) * this.speed;
+        this.mesh.rotation.y = Math.atan2(dx, dz);
+      }
+
+      // Attack player
+      if (this.hitCooldown > 0) this.hitCooldown -= dt;
+      if (dist < this.radius + 0.7 && this.hitCooldown <= 0) {
+        this.hitCooldown = 1.0;
+        damagePlayer(this.damage);
+        SoundFX.playMonsterGrowl();
+      }
+    }
+
+    takeDamage(dmg) {
+      this.hp -= dmg;
+      spawnParticles(this.mesh.position, 0xef4444, 7);
+      SoundFX.playHit();
+      triggerHitmarker();
+
+      if (this.hp <= 0) {
+        this.die();
+        return true;
+      }
+      return false;
+    }
+
+    die() {
+      spawnParticles(this.mesh.position, 0xf59e0b, 14);
+      spawnEssence(this.mesh.position, this.essenceValue);
+      game.score += this.scoreValue;
+      game.killsThisRun++;
+      profile.totalKills++;
+      scene.remove(this.mesh);
+    }
+  }
+
+  function spawnEssence(pos, amount) {
+    const geo = new THREE.OctahedronGeometry(0.28);
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0xf59e0b,
+      roughness: 0.2,
+      metalness: 0.9,
+      emissive: 0xd97706,
+      emissiveIntensity: 0.5
+    });
+    const orb = new THREE.Mesh(geo, mat);
+    orb.position.copy(pos);
+    orb.position.y = 0.5;
+    scene.add(orb);
+
+    essenceOrbs.push({ mesh: orb, amount: amount, life: 20 });
+  }
+
+  function spawnParticles(pos, color, count) {
+    for (let i = 0; i < count; i++) {
+      const p = new THREE.Mesh(
+        new THREE.BoxGeometry(0.09, 0.09, 0.09),
+        new THREE.MeshBasicMaterial({ color: color })
+      );
+      p.position.copy(pos);
+      p.position.y += 0.5;
+
+      const vx = (Math.random() - 0.5) * 4;
+      const vy = Math.random() * 3 + 1.2;
+      const vz = (Math.random() - 0.5) * 4;
+
+      scene.add(p);
+      hitParticles.push({ mesh: p, vx, vy, vz, life: 0.55 });
+    }
+  }
+
+  function triggerHitmarker() {
+    const hm = document.getElementById('hitmarker');
+    hm.style.opacity = '1';
+    setTimeout(() => { hm.style.opacity = '0'; }, 100);
+  }
+</script>
+
+<script>
+  /*
+   * Ballistics, raycast projectile travel, and reload handling
+   */
+  function tryShoot() {
+    if (!game.running || player.isReloading) return;
+    const now = performance.now();
+    const wp = WEAPONS[profile.equippedWeapon] || WEAPONS.glock;
+
+    if (now - player.lastShot < wp.fireRate) return;
+    if (player.ammo <= 0) {
+      tryReload();
+      return;
+    }
+
+    player.lastShot = now;
+    player.ammo--;
+    updateHudAmmo();
+
+    // Audio & Muzzle Flash
+    SoundFX.playGunshot(wp.id);
+    muzzleLight.intensity = 4.0;
+    setTimeout(() => { muzzleLight.intensity = 0; }, 55);
+
+    // POV Recoil kick & animated slide movement
+    player.recoilPitch = wp.recoilPitch;
+    player.slideOffset = 0.08;
+
+    const dmgMult = 1 + (profile.upgrades.damage * 0.12);
+    const finalDamage = wp.damage * dmgMult;
+    const count = wp.pellets || 1;
+
+    for (let p = 0; p < count; p++) {
+      const dir = new THREE.Vector3();
+      camera.getWorldDirection(dir);
+
+      if (wp.spread) {
+        dir.x += (Math.random() - 0.5) * wp.spread;
+        dir.y += (Math.random() - 0.5) * wp.spread;
+        dir.z += (Math.random() - 0.5) * wp.spread;
+        dir.normalize();
+      }
+
+      // Glowing Tracer Bullet
+      const bGeo = new THREE.SphereGeometry(wp.id === 'sniper' ? 0.12 : 0.06, 6, 6);
+      const bMat = new THREE.MeshBasicMaterial({ color: wp.color });
+      const bMesh = new THREE.Mesh(bGeo, bMat);
+      bMesh.position.copy(playerBody.position);
+      scene.add(bMesh);
+
+      activeBullets.push({
+        mesh: bMesh,
+        dir: dir.clone(),
+        speed: wp.speed,
+        damage: finalDamage,
+        pierce: wp.pierce || 0,
+        hitList: new Set(),
+        life: 1.5
+      });
+    }
+  }
+
+  function tryReload() {
+    if (player.isReloading) return;
+    const wp = WEAPONS[profile.equippedWeapon] || WEAPONS.glock;
+    if (player.ammo >= wp.capacity) return;
+
+    player.isReloading = true;
+    SoundFX.playReload();
+
+    const reloadBonus = 1 - (profile.upgrades.reload * 0.15);
+    player.reloadDuration = (wp.reloadTime * reloadBonus) / 1000;
+    player.reloadTimer = player.reloadDuration;
+
+    document.getElementById('hudReloadPrompt').textContent = 'RECARGANDO...';
+    document.getElementById('hudReloadPrompt').classList.remove('hidden');
+  }
+
+  function damagePlayer(dmg) {
+    player.hp -= dmg;
+    const vig = document.getElementById('damageVignette');
+    vig.style.opacity = '1';
+    setTimeout(() => { vig.style.opacity = '0'; }, 160);
+
+    updateHudHealth();
+
+    if (player.hp <= 0) {
+      player.hp = 0;
+      onGameOver();
+    }
+  }
+
+  function updateHudHealth() {
+    const pct = Math.max(0, Math.min(100, (player.hp / player.maxHp) * 100));
+    document.getElementById('hudHpBar').style.width = `${pct}%`;
+    document.getElementById('hudHpText').textContent = `${Math.ceil(player.hp)} / ${player.maxHp}`;
+  }
+
+  function updateHudAmmo() {
+    const wp = WEAPONS[profile.equippedWeapon] || WEAPONS.glock;
+    document.getElementById('hudAmmoCur').textContent = player.isReloading ? '--' : player.ammo;
+    document.getElementById('hudAmmoMax').textContent = wp.capacity;
+
+    if (player.ammo <= 0 && !player.isReloading) {
+      document.getElementById('hudReloadPrompt').textContent = '[R] RECARGAR MUNICIÓN';
+      document.getElementById('hudReloadPrompt').classList.remove('hidden');
+    } else if (!player.isReloading) {
+      document.getElementById('hudReloadPrompt').classList.add('hidden');
+    }
+  }
+</script>
+
+<script>
+  /*
+   * Touch stick & aim drag zones with ScreenOrientation locking API
+   */
+  const touchZone = document.getElementById('touchMoveZone');
+  const touchKnob = document.getElementById('touchMoveKnob');
+  const touchShoot = document.getElementById('touchShootBtn');
+  const touchReload = document.getElementById('touchReloadBtn');
+
+  let touchMoveOrigin = null;
+  let touchMoveVec = { x: 0, y: 0 };
+  let lookTouchId = null;
+  let lookLastPos = { x: 0, y: 0 };
+
+  function setupMobileControls() {
+    if (!isTouchDevice()) return;
+
+    document.getElementById('mobileControls').classList.remove('hidden');
+
+    // Movement Joypad
+    touchZone.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      SoundFX.init();
+      const rect = touchZone.getBoundingClientRect();
+      touchMoveOrigin = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    }, { passive: false });
+
+    touchZone.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      if (!touchMoveOrigin) return;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - touchMoveOrigin.x;
+      const dy = t.clientY - touchMoveOrigin.y;
+      const maxR = 48;
+      const dist = Math.min(maxR, Math.hypot(dx, dy));
+      const ang = Math.atan2(dy, dx);
+      touchMoveVec = { x: Math.cos(ang) * (dist / maxR), y: Math.sin(ang) * (dist / maxR) };
+      touchKnob.style.transform = `translate(${Math.cos(ang) * dist}px, ${Math.sin(ang) * dist}px)`;
+    }, { passive: false });
+
+    const resetKnob = () => {
+      touchMoveOrigin = null;
+      touchMoveVec = { x: 0, y: 0 };
+      touchKnob.style.transform = 'translate(0px, 0px)';
+    };
+    touchZone.addEventListener('touchend', resetKnob);
+    touchZone.addEventListener('touchcancel', resetKnob);
+
+    // Aim Look Drag (Right half of the screen)
+    window.addEventListener('touchstart', (e) => {
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const t = e.changedTouches[i];
+        if (t.clientX > window.innerWidth * 0.45 && lookTouchId === null) {
+          lookTouchId = t.identifier;
+          lookLastPos = { x: t.clientX, y: t.clientY };
+        }
+      }
+    }, { passive: true });
+
+    window.addEventListener('touchmove', (e) => {
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const t = e.changedTouches[i];
+        if (t.identifier === lookTouchId) {
+          const dx = t.clientX - lookLastPos.x;
+          const dy = t.clientY - lookLastPos.y;
+          lookLastPos = { x: t.clientX, y: t.clientY };
+
+          // Scaled touch sensitivity
+          const sens = 0.0028 * profile.touchSensitivity;
+          player.yaw -= dx * sens;
+          player.pitch -= dy * sens;
+          player.pitch = Math.max(-Math.PI / 2.3, Math.min(Math.PI / 2.3, player.pitch));
+        }
+      }
+    }, { passive: true });
+
+    const endLook = (e) => {
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === lookTouchId) lookTouchId = null;
+      }
+    };
+    window.addEventListener('touchend', endLook);
+    window.addEventListener('touchcancel', endLook);
+
+    // Touch Buttons
+    touchShoot.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      SoundFX.init();
+      isMouseDown = true;
+      tryShoot();
+    }, { passive: false });
+    touchShoot.addEventListener('touchend', () => { isMouseDown = false; });
+
+    touchReload.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      tryReload();
+    }, { passive: false });
+  }
+
+  // Fullscreen and Landscape Orientation Lock Handler
+  async function lockLandscape() {
+    try {
+      if (document.documentElement.requestFullscreen) {
+        await document.documentElement.requestFullscreen();
+      }
+      if (screen.orientation && screen.orientation.lock) {
+        await screen.orientation.lock('landscape');
+      }
+      document.getElementById('landscapePrompt').classList.add('hidden');
+      showToast('Modo horizontal activado');
+    } catch (err) {
+      console.log('Landscape lock not fully supported on this device/browser', err);
+      document.getElementById('landscapePrompt').classList.add('hidden');
+    }
+  }
+
+  document.getElementById('btnRequestLandscape').addEventListener('click', lockLandscape);
+  document.getElementById('btnToggleLandscape').addEventListener('click', lockLandscape);
+</script>
+
+<script>
+  /*
+   * Wave Spawner and Raid Difficulty Progression
+   */
+  function startRaid(num) {
+    game.raid = num;
+    game.enemiesRemainingToSpawn = 10 + num * 6;
+    game.spawnTimer = 0;
+
+    const banner = document.getElementById('raidBanner');
+    const title = document.getElementById('raidTitle');
+    const sub = document.getElementById('raidSubtitle');
+
+    const isHeavy = (num % 3 === 0);
+    title.textContent = isHeavy ? `¡RAID ${num}: ASALTO PESADO!` : `RAID ${num} INICIADO`;
+    sub.textContent = isHeavy ? 'Bestias acorazadas emergen de los riscos' : 'Contén a las criaturas en el valle';
+
+    banner.classList.remove('opacity-0', 'scale-90');
+    banner.classList.add('opacity-100', 'scale-100');
+    setTimeout(() => {
+      banner.classList.remove('opacity-100', 'scale-100');
+      banner.classList.add('opacity-0', 'scale-90');
+    }, 3000);
+
+    document.getElementById('hudRaidNum').textContent = num;
+  }
+
+  function spawnRaidEnemy() {
+    const r = game.raid;
+    let type = 'crawler';
+    const roll = Math.random();
+
+    if (r === 1) {
+      type = roll < 0.6 ? 'crawler' : 'stalker';
+    } else if (r <= 3) {
+      if (roll < 0.45) type = 'crawler';
+      else if (roll < 0.8) type = 'stalker';
+      else type = 'brute';
+    } else {
+      if (roll < 0.35) type = 'crawler';
+      else if (roll < 0.7) type = 'stalker';
+      else type = 'brute';
+    }
+
+    monsters.push(new ShadowBeast(type, r));
+    game.enemiesRemainingToSpawn--;
+  }
+
+  function updateRaidSpawning(dt) {
+    if (game.enemiesRemainingToSpawn > 0) {
+      game.spawnTimer += dt;
+      const interval = Math.max(0.45, 1.3 - game.raid * 0.08);
+      if (game.spawnTimer >= interval) {
+        game.spawnTimer = 0;
+        spawnRaidEnemy();
+      }
+    } else if (monsters.length === 0) {
+      startRaid(game.raid + 1);
+    }
+
+    document.getElementById('hudEnemyCount').textContent = monsters.length + game.enemiesRemainingToSpawn;
+  }
+</script>
+
+<script>
+  let lastTime = performance.now();
+
+  function animateLoop(now) {
+    requestAnimationFrame(animateLoop);
+    const dt = Math.min(0.08, (now - lastTime) / 1000);
+    lastTime = now;
+
+    if (!game.running) {
+      renderer.render(scene, camera);
+      return;
+    }
+
+    // Continuous fire while holding
+    if (isMouseDown) tryShoot();
+
+    // Natural tactical movement with acceleration / friction
+    let targetFwd = 0;
+    let targetRight = 0;
+
+    if (keys['KeyW'] || keys['ArrowUp']) targetFwd += 1;
+    if (keys['KeyS'] || keys['ArrowDown']) targetFwd -= 1;
+    if (keys['KeyA'] || keys['ArrowLeft']) targetRight -= 1;
+    if (keys['KeyD'] || keys['ArrowRight']) targetRight += 1;
+
+    if (touchMoveVec.x !== 0 || touchMoveVec.y !== 0) {
+      targetRight += touchMoveVec.x;
+      targetFwd -= touchMoveVec.y;
+    }
+
+    const inputLen = Math.hypot(targetFwd, targetRight);
+    const maxSpeed = player.speed * (1 + profile.upgrades.speed * 0.08);
+
+    let desiredVx = 0;
+    let desiredVz = 0;
+
+    if (inputLen > 0) {
+      const fX = -Math.sin(player.yaw);
+      const fZ = -Math.cos(player.yaw);
+      const rX = Math.cos(player.yaw);
+      const rZ = -Math.sin(player.yaw);
+
+      desiredVx = (fX * (targetFwd / inputLen) + rX * (targetRight / inputLen)) * maxSpeed;
+      desiredVz = (fZ * (targetFwd / inputLen) + rZ * (targetRight / inputLen)) * maxSpeed;
+    }
+
+    // Smooth physical inertia
+    const accel = 12.0;
+    player.vx += (desiredVx - player.vx) * Math.min(1, accel * dt);
+    player.vz += (desiredVz - player.vz) * Math.min(1, accel * dt);
+
+    player.x += player.vx * dt;
+    player.z += player.vz * dt;
+
+    // Natural Arena boundary clamp
+    const limit = arenaRadius - 4;
+    player.x = Math.max(-limit, Math.min(limit, player.x));
+    player.z = Math.max(-limit, Math.min(limit, player.z));
+
+    // Footstep audio timing & Soft Head Bobbing
+    const curSpeed = Math.hypot(player.vx, player.vz);
+    if (curSpeed > 0.8) {
+      player.bobAngle += dt * 8.5;
+      player.stepTimer += dt;
+      if (player.stepTimer > 0.42) {
+        player.stepTimer = 0;
+        SoundFX.playStep();
+      }
+    } else {
+      player.bobAngle = 0;
+      player.stepTimer = 0;
+    }
+
+    // Update body & camera positions
+    playerBody.position.x = player.x;
+    playerBody.position.z = player.z;
+    playerBody.rotation.y = player.yaw;
+
+    const headBobY = Math.sin(player.bobAngle) * 0.035;
+    const headBobX = Math.cos(player.bobAngle * 0.5) * 0.02;
+    camera.position.set(headBobX, headBobY, 0);
+
+    camera.rotation.x = player.pitch + player.recoilPitch;
+    player.recoilPitch = Math.max(0, player.recoilPitch - dt * 1.5);
+
+    // Animate POV Weapon and Slide recoil
+    if (activeWeaponMesh) {
+      activeWeaponMesh.position.x = 0.24 + headBobX * 0.5;
+      activeWeaponMesh.position.y = -0.22 + headBobY * 0.5;
+
+      if (slideMesh && player.slideOffset > 0) {
+        slideMesh.position.z = player.slideOffset;
+        player.slideOffset = Math.max(0, player.slideOffset - dt * 0.8);
+      }
+    }
+
+    // Reload timer
+    if (player.isReloading) {
+      player.reloadTimer -= dt;
+      if (player.reloadTimer <= 0) {
+        player.isReloading = false;
+        const wp = WEAPONS[profile.equippedWeapon] || WEAPONS.glock;
+        player.ammo = wp.capacity;
+        updateHudAmmo();
+      }
+    }
+
+    // Bullets vs Monsters
+    for (let i = activeBullets.length - 1; i >= 0; i--) {
+      const b = activeBullets[i];
+      b.life -= dt;
+      b.mesh.position.addScaledVector(b.dir, b.speed * dt);
+
+      for (let m = monsters.length - 1; m >= 0; m--) {
+        const mon = monsters[m];
+        if (b.hitList.has(mon)) continue;
+
+        const d = b.mesh.position.distanceTo(mon.mesh.position);
+        if (d < mon.radius + 0.35) {
+          b.hitList.add(mon);
+          const killed = mon.takeDamage(b.damage);
+          if (killed) {
+            monsters.splice(m, 1);
+            updateHudScores();
+          }
+
+          if (b.pierce <= 0) {
+            scene.remove(b.mesh);
+            activeBullets.splice(i, 1);
+            break;
+          } else {
+            b.pierce--;
+          }
+        }
+      }
+
+      if (b.life <= 0 && activeBullets.includes(b)) {
+        scene.remove(b.mesh);
+        activeBullets.splice(i, 1);
+      }
+    }
+
+    // Update Monsters
+    for (let i = monsters.length - 1; i >= 0; i--) {
+      monsters[i].update(dt);
+    }
+
+    // Update Essence Orbs (Magnetic pull)
+    for (let i = essenceOrbs.length - 1; i >= 0; i--) {
+      const o = essenceOrbs[i];
+      o.life -= dt;
+      o.mesh.rotation.y += dt * 3.5;
+
+      const d = o.mesh.position.distanceTo(playerBody.position);
+      if (d < 8) {
+        o.mesh.position.lerp(playerBody.position, dt * 5.5);
+      }
+
+      if (d < 1.3) {
+        profile.credits += o.amount;
+        game.creditsThisRun += o.amount;
+        SoundFX.playEssence();
+        updateHudCreditDisplays();
+        scene.remove(o.mesh);
+        essenceOrbs.splice(i, 1);
+        continue;
+      }
+
+      if (o.life <= 0) {
+        scene.remove(o.mesh);
+        essenceOrbs.splice(i, 1);
+      }
+    }
+
+    // Hit Particles
+    for (let i = hitParticles.length - 1; i >= 0; i--) {
+      const p = hitParticles[i];
+      p.life -= dt;
+      p.mesh.position.x += p.vx * dt;
+      p.mesh.position.y += p.vy * dt;
+      p.mesh.position.z += p.vz * dt;
+      p.vy -= 9.8 * dt;
+
+      if (p.life <= 0) {
+        scene.remove(p.mesh);
+        hitParticles.splice(i, 1);
+      }
+    }
+
+    updateRaidSpawning(dt);
+
+    // Timer display
+    const elapsed = Math.floor((performance.now() - game.startTime) / 1000);
+    const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
+    const ss = String(elapsed % 60).padStart(2, '0');
+    document.getElementById('hudTimer').textContent = `${mm}:${ss}`;
+
+    renderer.render(scene, camera);
+  }
+
+  function updateHudScores() {
+    document.getElementById('hudKills').textContent = game.killsThisRun;
+    document.getElementById('hudScore').textContent = game.score;
+  }
+
+  function startNewGame() {
+    loadSavedData();
+    game.running = true;
+    game.raid = 1;
+    game.killsThisRun = 0;
+    game.creditsThisRun = 0;
+    game.score = 0;
+    game.startTime = performance.now();
+
+    player.x = 0;
+    player.z = 0;
+    player.vx = 0;
+    player.vz = 0;
+    player.yaw = 0;
+    player.pitch = 0;
+    player.maxHp = 100 + profile.upgrades.health * 25;
+    player.hp = player.maxHp;
+
+    const currentWp = WEAPONS[profile.equippedWeapon] || WEAPONS.glock;
+    player.ammo = currentWp.capacity;
+    player.isReloading = false;
+
+    // Reset collections
+    monsters.forEach(m => scene.remove(m.mesh));
+    monsters.length = 0;
+    activeBullets.forEach(b => scene.remove(b.mesh));
+    activeBullets.length = 0;
+    essenceOrbs.forEach(o => scene.remove(o.mesh));
+    essenceOrbs.length = 0;
+
+    rebuildWeaponModel();
+    updateHudHealth();
+    updateHudAmmo();
+    updateHudScores();
+    updateHudCreditDisplays();
+
+    document.getElementById('startScreen').classList.add('hidden');
+    document.getElementById('gameOverScreen').classList.add('hidden');
+    document.getElementById('shopScreen').classList.add('hidden');
+    document.getElementById('settingsModal').classList.add('hidden');
+
+    startRaid(1);
+  }
+
+  function onGameOver() {
+    game.running = false;
+    SoundFX.playDeath();
+
+    if (document.exitPointerLock) document.exitPointerLock();
+
+    if (game.raid > profile.highestRaid) {
+      profile.highestRaid = game.raid;
+    }
+    saveGameData();
+
+    document.getElementById('goRaid').textContent = game.raid;
+    document.getElementById('goKills').textContent = game.killsThisRun;
+    document.getElementById('goCredits').textContent = `+${game.creditsThisRun}`;
+    document.getElementById('goTotalCredits').textContent = profile.credits;
+
+    document.getElementById('gameOverScreen').classList.remove('hidden');
+  }
+</script>
+
+<script>
+  /*
+   * Tactical Armory & Upgrades Shop
+   */
+  function renderWeaponsShop() {
+    const pane = document.getElementById('paneWeapons');
+    pane.innerHTML = '';
+
+    Object.values(WEAPONS).forEach(wp => {
+      const isOwned = profile.unlockedWeapons.includes(wp.id);
+      const isEquipped = profile.equippedWeapon === wp.id;
+
+      const card = document.createElement('div');
+      card.className = `p-4 rounded-xl border ${isEquipped ? 'border-amber-400 bg-amber-950/20' : 'border-gray-800 bg-gray-900/60'} flex flex-col justify-between`;
+
+      card.innerHTML = `
+        <div>
+          <div class="flex justify-between items-start mb-1">
+            <h4 class="font-teko text-2xl font-bold text-white leading-none">${wp.name}</h4>
+            <span class="text-xs text-amber-400 font-bold">${isEquipped ? 'EQUIPADA' : ''}</span>
+          </div>
+          <p class="text-xs text-gray-300 mb-3">${wp.desc}</p>
+          <div class="grid grid-cols-3 gap-2 text-xs font-teko bg-black/60 p-2 rounded mb-3 text-gray-300">
+            <div>DAÑO: <span class="text-white font-bold">${wp.damage}${wp.pellets > 1 ? `x${wp.pellets}` : ''}</span></div>
+            <div>CAPACIDAD: <span class="text-white font-bold">${wp.capacity}</span></div>
+            <div>CADENCIA: <span class="text-white font-bold">${Math.round(1000 / wp.fireRate)}/s</span></div>
+          </div>
+        </div>
+        <div class="flex items-center justify-between pt-2 border-t border-gray-800">
+          <span class="font-teko text-lg font-bold text-amber-400">
+            ${isOwned ? 'EN ARMERÍA' : `<i class="fa-solid fa-gem mr-1"></i> ${wp.price} ESENCIA`}
+          </span>
+          <button class="wp-btn btn-tactical px-4 py-1.5 rounded font-teko text-lg font-bold text-white ${
+            isEquipped
+              ? 'bg-emerald-700 cursor-default'
+              : isOwned
+                ? 'bg-amber-600'
+                : (profile.credits >= wp.price ? 'bg-amber-500' : 'bg-gray-800 text-gray-500 cursor-not-allowed')
+          }" data-id="${wp.id}">
+            ${isEquipped ? 'ACTIVA' : isOwned ? 'EQUIPAR' : 'COMPRAR'}
+          </button>
+        </div>
+      `;
+      pane.appendChild(card);
+    });
+
+    pane.querySelectorAll('.wp-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-id');
+        const wp = WEAPONS[id];
+        const isOwned = profile.unlockedWeapons.includes(id);
+
+        if (isOwned) {
+          profile.equippedWeapon = id;
+          saveGameData();
+          rebuildWeaponModel();
+          renderWeaponsShop();
+          showToast(`¡Equipada ${wp.name}!`);
+        } else if (profile.credits >= wp.price) {
+          profile.credits -= wp.price;
+          profile.unlockedWeapons.push(id);
+          profile.equippedWeapon = id;
+          saveGameData();
+          rebuildWeaponModel();
+          renderWeaponsShop();
+          showToast(`¡${wp.name} adquirida!`);
+        } else {
+          showToast('Esencia insuficiente');
+        }
+      });
+    });
+  }
+
+  function renderUpgradesShop() {
+    const pane = document.getElementById('paneUpgrades');
+    pane.innerHTML = '';
+
+    UPGRADES.forEach(u => {
+      const curLvl = profile.upgrades[u.id] || 0;
+      const isMax = curLvl >= u.max;
+      const cost = Math.round(u.baseCost * Math.pow(u.mult, curLvl));
+
+      const card = document.createElement('div');
+      card.className = 'p-4 rounded-xl border border-gray-800 bg-gray-900/60 flex flex-col justify-between';
+
+      card.innerHTML = `
+        <div>
+          <div class="flex justify-between items-start mb-1">
+            <h4 class="font-teko text-2xl font-bold text-white leading-none">${u.name}</h4>
+            <i class="fa-solid ${u.icon} text-amber-400 text-lg"></i>
+          </div>
+          <p class="text-xs text-gray-300 mb-3">${u.desc}</p>
+          <div class="flex items-center gap-1.5 mb-3">
+            <span class="text-xs text-gray-400">NIVEL:</span>
+            <div class="flex gap-1">
+              ${Array.from({ length: u.max }).map((_, i) => `
+                <span class="w-5 h-2 rounded ${i < curLvl ? 'bg-amber-400 shadow-sm shadow-amber-400' : 'bg-gray-800'}"></span>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+        <div class="flex items-center justify-between pt-2 border-t border-gray-800">
+          <span class="font-teko text-lg font-bold text-amber-400">
+            ${isMax ? '<span class="text-emerald-400">NIVEL MÁXIMO</span>' : `<i class="fa-solid fa-gem mr-1"></i> ${cost} ESENCIA`}
+          </span>
+          <button class="upg-btn btn-tactical px-4 py-1.5 rounded font-teko text-lg font-bold text-white ${
+            isMax
+              ? 'bg-gray-800 text-gray-600 cursor-not-allowed'
+              : (profile.credits >= cost ? 'bg-amber-500' : 'bg-gray-800 text-gray-500 cursor-not-allowed')
+          }" data-id="${u.id}" ${isMax ? 'disabled' : ''}>
+            ${isMax ? 'MAX' : 'MEJORAR'}
+          </button>
+        </div>
+      `;
+      pane.appendChild(card);
+    });
+
+    pane.querySelectorAll('.upg-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-id');
+        const u = UPGRADES.find(item => item.id === id);
+        const curLvl = profile.upgrades[id] || 0;
+        if (curLvl >= u.max) return;
+        const cost = Math.round(u.baseCost * Math.pow(u.mult, curLvl));
+
+        if (profile.credits >= cost) {
+          profile.credits -= cost;
+          profile.upgrades[id] = curLvl + 1;
+          saveGameData();
+          renderUpgradesShop();
+          showToast(`¡Mejora aplicada: ${u.name}!`);
+        } else {
+          showToast('Esencia insuficiente');
+        }
+      });
+    });
+  }
+
+  function renderSkinsShop() {
+    const pane = document.getElementById('paneSkins');
+    pane.innerHTML = '';
+
+    SKINS.forEach(skin => {
+      const isOwned = profile.unlockedSkins.includes(skin.id);
+      const isEquipped = profile.equippedSkin === skin.id;
+
+      const card = document.createElement('div');
+      card.className = `p-4 rounded-xl border ${isEquipped ? 'border-amber-400 bg-amber-950/20' : 'border-gray-800 bg-gray-900/60'} flex flex-col items-center text-center justify-between`;
+
+      card.innerHTML = `
+        <div class="flex flex-col items-center w-full">
+          <div class="w-12 h-12 rounded-lg border border-gray-700 flex items-center justify-center mb-2 shadow-md" style="background: #${skin.bodyColor.toString(16).padStart(6, '0')}; border-color: #${skin.trimColor.toString(16).padStart(6, '0')};">
+            <i class="fa-solid fa-paintbrush text-white text-base"></i>
+          </div>
+          <h4 class="font-teko text-xl font-bold text-white mb-0.5 leading-none">${skin.name}</h4>
+          <p class="text-[11px] text-gray-400 mb-3">${skin.desc}</p>
+        </div>
+        <div class="w-full pt-2 border-t border-gray-800">
+          <button class="skin-btn btn-tactical w-full py-1 rounded font-teko text-base font-bold text-white ${
+            isEquipped
+              ? 'bg-emerald-700 cursor-default'
+              : isOwned
+                ? 'bg-amber-600'
+                : (profile.credits >= skin.price ? 'bg-amber-500' : 'bg-gray-800 text-gray-500 cursor-not-allowed')
+          }" data-id="${skin.id}">
+            ${isEquipped ? 'EQUIPADA' : isOwned ? 'EQUIPAR' : `<i class="fa-solid fa-gem mr-1"></i> ${skin.price}`}
+          </button>
+        </div>
+      `;
+      pane.appendChild(card);
+    });
+
+    pane.querySelectorAll('.skin-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-id');
+        const skin = SKINS.find(s => s.id === id);
+        const isOwned = profile.unlockedSkins.includes(id);
+
+        if (isOwned) {
+          profile.equippedSkin = id;
+          saveGameData();
+          rebuildWeaponModel();
+          renderSkinsShop();
+          showToast(`Skin activa: ${skin.name}`);
+        } else if (profile.credits >= skin.price) {
+          profile.credits -= skin.price;
+          profile.unlockedSkins.push(id);
+          profile.equippedSkin = id;
+          saveGameData();
+          rebuildWeaponModel();
+          renderSkinsShop();
+          showToast(`¡Skin desbloqueada: ${skin.name}!`);
+        } else {
+          showToast('Esencia insuficiente');
+        }
+      });
+    });
+  }
+
+  function openShop() {
+    loadSavedData();
+    renderWeaponsShop();
+    renderUpgradesShop();
+    renderSkinsShop();
+    document.getElementById('shopScreen').classList.remove('hidden');
+  }
+
+  function closeShop() {
+    document.getElementById('shopScreen').classList.add('hidden');
+  }
+
+  // Settings Modal Controls
+  const settingsModal = document.getElementById('settingsModal');
+  const sliderMouse = document.getElementById('sliderMouseSens');
+  const sliderTouch = document.getElementById('sliderTouchSens');
+
+  function openSettings() {
+    sliderMouse.value = profile.mouseSensitivity;
+    sliderTouch.value = profile.touchSensitivity;
+    document.getElementById('labelMouseSens').textContent = profile.mouseSensitivity.toFixed(1);
+    document.getElementById('labelTouchSens').textContent = profile.touchSensitivity.toFixed(1);
+    settingsModal.classList.remove('hidden');
+  }
+
+  function closeSettings() {
+    settingsModal.classList.add('hidden');
+  }
+
+  sliderMouse.addEventListener('input', (e) => {
+    profile.mouseSensitivity = parseFloat(e.target.value);
+    document.getElementById('labelMouseSens').textContent = profile.mouseSensitivity.toFixed(1);
+  });
+
+  sliderTouch.addEventListener('input', (e) => {
+    profile.touchSensitivity = parseFloat(e.target.value);
+    document.getElementById('labelTouchSens').textContent = profile.touchSensitivity.toFixed(1);
+  });
+
+  document.getElementById('btnSaveSettings').addEventListener('click', () => {
+    saveGameData();
+    closeSettings();
+    showToast('Ajustes tácticos aplicados');
+  });
+
+  document.getElementById('btnOpenSettings').addEventListener('click', openSettings);
+  document.getElementById('btnCloseSettings').addEventListener('click', closeSettings);
+
+  // Shop Tab Switcher
+  const tabWeapons = document.getElementById('tabWeapons');
+  const tabUpgrades = document.getElementById('tabUpgrades');
+  const tabSkins = document.getElementById('tabSkins');
+  const paneWeapons = document.getElementById('paneWeapons');
+  const paneUpgrades = document.getElementById('paneUpgrades');
+  const paneSkins = document.getElementById('paneSkins');
+
+  function setShopTab(activeTab, activePane) {
+    [tabWeapons, tabUpgrades, tabSkins].forEach(t => {
+      t.classList.remove('border-amber-500', 'text-amber-400');
+      t.classList.add('border-transparent', 'text-gray-400');
+    });
+    [paneWeapons, paneUpgrades, paneSkins].forEach(p => p.classList.add('hidden'));
+
+    activeTab.classList.add('border-amber-500', 'text-amber-400');
+    activeTab.classList.remove('border-transparent', 'text-gray-400');
+    activePane.classList.remove('hidden');
+  }
+
+  tabWeapons.addEventListener('click', () => setShopTab(tabWeapons, paneWeapons));
+  tabUpgrades.addEventListener('click', () => setShopTab(tabUpgrades, paneUpgrades));
+  tabSkins.addEventListener('click', () => setShopTab(tabSkins, paneSkins));
+
+  // Game UI Button Listeners
+  document.getElementById('btnPlayGame').addEventListener('click', () => {
+    SoundFX.init();
+    startNewGame();
+  });
+  document.getElementById('btnOpenShopStart').addEventListener('click', openShop);
+  document.getElementById('btnRetry').addEventListener('click', () => {
+    SoundFX.init();
+    startNewGame();
+  });
+  document.getElementById('btnOpenShopDead').addEventListener('click', () => {
+    document.getElementById('gameOverScreen').classList.add('hidden');
+    openShop();
+  });
+  document.getElementById('btnCloseShop').addEventListener('click', closeShop);
+  document.getElementById('btnShopToGame').addEventListener('click', () => {
+    closeShop();
+    startNewGame();
+  });
+
+  // Window Initialization
+  window.onload = function() {
+    loadSavedData();
+    initThree();
+    setupMobileControls();
+    requestAnimationFrame(animateLoop);
+  };
+</script>
+</body>
+</html>
